@@ -1,0 +1,213 @@
+---
+title: "Reproducible Results for Motor Control in Individuals with Autistic Traits"
+author: "Deborah Apthorp"
+date: "`r Sys.Date()`"
+output:
+  prettydoc::html_pretty:
+    theme: architect
+    highlight: github
+    bookdown::html_document2:
+      df_print: paged
+---
+
+## Background
+
+In an online study, we explored whether fine motor differences are evident in people with ASD traits in the general population. We hypothesised that those with higher autistic traits would show more impairment in motor functioning, measured by the Finger Tapping Task, and that age would moderate motor impairment. The study included 159 participants aged 18-78 who completed an online measure of autistic traits (the AQ-10) and a measure of motor functioning (the FTT). Results showed those with higher AQ-10 scores recorded lower tapping scores in both hands. Moderation analysis showed younger participants with more ASD traits recorded lower tapping scores for the dominant hand. This suggests motor differences seen in ASD studies are evident in the general population.
+
+## Results
+
+```{r setup, include = FALSE}
+library(papaja)
+library(tidyverse)
+library(reshape2)
+library(mosaic)
+library(dplyr)
+library(tableone)
+library(raincloudplots)
+library(lme4)
+library(corx)
+library(psych)
+library(interactions)
+```
+
+```{r analysis-preferences, include = FALSE}
+# Seed for random number generation
+set.seed(42)
+knitr::opts_chunk$set(cache.extra = knitr::rand_seed)
+```
+
+```{r load and wrangle data, include = FALSE}
+FTT_AQ_data = read.csv('FTT_AQ_data.csv')
+FTT_AQ_data <- filter(FTT_AQ_data, FTT_AQ_data$values.score_dominant > 3) # filter out responses with too few taps.
+
+## Wrangle data - recode gender to dummy code for male, add categorical data for descriptives, select only useful variables 
+FTT_AQ_data <- FTT_AQ_data %>% 
+  mutate(Gender = Gender -1) %>%
+  mutate(GenderCat = recode(Gender, 
+  "0" = "Female",
+  "1" = "Male"))  %>% 
+  select(ResponseId, Gender, GenderCat, Age, AQ.10.score, computer.platform, values.score_dominant,    values.score_nondominant)
+
+```
+
+```{r descriptives, echo =  FALSE, include = FALSE }
+
+FTT_AQ_data1 <- FTT_AQ_data %>% 
+  select(Age, GenderCat, AQ.10.score, values.score_dominant, values.score_nondominant)
+
+AQvars<-c("Age", "AQ.10.score","values.score_dominant", "values.score_nondominant")
+
+# Make list of the variable labels you want to use for each variable
+var_label_list <- list(Age = "Age (years)",
+                       GenderCat = "Gender",
+                      AQ.10.score = "AQ-10 score", values.score_dominant = "Dominant hand score",
+                      values.score_nondominant= "Non-dominant hand score")
+
+#attach/assign the labels to the variables in the data
+labelled::var_label(FTT_AQ_data1) <- var_label_list
+
+tab1 <- print(CreateTableOne(vars=AQvars, strata= "GenderCat", data=FTT_AQ_data1, addOverall = TRUE), varLabels = TRUE, )
+tab1 <- as.data.frame(tab1) # turn into a data frame so we can use apa_table
+tab1 <- select(tab1, -test) # slight hack to remove the empty "test" column
+```
+
+```{r descriptives1, echo = FALSE}
+
+knitr::kable(tab1, caption = "Descriptive statistics of the key variables overall and stratified by gender."  )
+
+```
+
+## Preliminary Analysis
+
+```{r preliminary analysis, include=FALSE}
+FTT_AQ_Data_Long <- melt(FTT_AQ_data,
+                     # ID variables - all the variables to keep but not split apart on
+                     id.vars=c("ResponseId", "Age", "Gender", "computer.platform", "AQ.10.score"),
+                     # The source columns
+                     measure.vars=c("values.score_dominant","values.score_nondominant"),
+                     # Name of the destination column that will identify the original
+                     # column that the measurement came from
+                     variable.name = "Hand",
+                     value.name="Tapping_score"
+)
+
+levels(FTT_AQ_Data_Long$Hand)[levels(FTT_AQ_Data_Long$Hand)=="values.score_dominant"] <- "Dominant"
+levels(FTT_AQ_Data_Long$Hand)[levels(FTT_AQ_Data_Long$Hand)=="values.score_nondominant"] <- "Nondominant"
+
+res <- wilcox.test(Tapping_score ~ Hand, data = FTT_AQ_Data_Long, paired = TRUE)
+
+## still need to be using these results in the text below. Don't think this should be a t-value! 
+
+```
+
+A paired samples t-test was conducted to compare hand tapping in dominant and non-dominant hands. Shapiro-Wilk test of normality indicated the sample was not normally distributed ($W = .98, p = .019$) therefore the non-parametric Wilcoxon W test was used. There was a significant difference between dominant ($M = 66.38, SD = 9.75$) and non-dominant ($M = 61.07, SD = 9.75$) hand tapping scores, $V=11045, p <.001$ (Figure 1). Due to this, all statistical tests were conducted separately for each hand.
+
+```{r plotHands, echo = FALSE, fig.width = 8, fig.cap = "Observed differences between mean hand tapping scores. Individuals' scores are connected with grey lines, and distributions are shown on the outside of the plots. "}
+df_1x1 <- data_1x1(
+  array_1 = FTT_AQ_data$values.score_dominant,
+  array_2 = FTT_AQ_data$values.score_nondominant,
+  jit_distance = .09,
+  jit_seed = 321)
+
+raincloud_2 <- raincloud_1x1_repmes(
+  data = df_1x1,
+  colors = (c('dodgerblue', 'darkorange')),
+  fills = (c('dodgerblue', 'darkorange')),
+  line_color = 'gray',
+  line_alpha = .3,
+  size = 1,
+  alpha = .6,
+  align_clouds = FALSE) +
+ 
+scale_x_continuous(breaks=c(1,2), labels=c("Dominant", "Non-Dominant"), limits=c(0, 3)) +
+  xlab("Hand") + 
+  ylab("Tapping score") +
+  theme_classic()
+
+raincloud_2
+```
+
+## Correlational Analysis
+
+As assumptions of normality were violated, Spearman's correlation analyses were run for each hand to assess the associations between AQ-10 score, age, gender and tapping scores (see Table 2).
+
+
+```{r correlations, echo = FALSE}
+cor <-  FTT_AQ_data %>%
+  select(Age, Gender, AQ.10.score, values.score_dominant, values.score_nondominant) %>% 
+  corx(triangle = "lower",
+       stars = c(0.05, 0.01, 0.001),
+       #describe = c(`M` = mean, `SD` = sd), 
+       method = "spearman") 
+
+knitr::kable(cor$apa, 
+          caption = "Correlations between key variables and tapping scores", 
+          escape = TRUE)
+
+```
+
+*Note*: \* p \< 0.05; \*\* p \< 0.01; \*\*\* p \< 0.001.
+
+Based on these analyses, age was negatively associated with AQ-10 score and only gender was found to be positively correlated with tapping scores for both hands (such that male participants had higher tapping scores than females - also evident in Table 1). These correlations reflected small to medium effect sizes (Cohen, 1988).
+
+## Regression Analysis
+
+Two general linear model analyses (GLMs) were carried out to investigate the influence autistic traits in the general population (AQ-10 scores), age, and gender have on fine motor skills (FTT scores). Both Q-Q plots showed that the data was normally distributed, Kolmogorov-Smirnov test and the Shapiro-Wilk's W test were both not significant ($W = .984, p = .059, D = .054, p = .743$ dominant; $W = .948, p = .057, D = .083, p = .226$ non-dominant). Levene's test indicated no violations to the assumption of homogeneity of variance for either hand ($p =.114$ dominant, $p = .235$ non-dominant). Following the recommendations of Cohen (2013), AQ-10 scores and age were centred at zero and gender was dummy-coded.
+
+```{r regression dominant and non-dominant hands, echo = FALSE}
+
+model_1 <- lm(values.score_dominant ~ AQ.10.score *Age + Gender , data = FTT_AQ_data)
+model_1_results <- apa_print(model_1)
+
+model_2 <- lm(values.score_nondominant ~ AQ.10.score*Age + Gender , data = FTT_AQ_data)
+model_2_results <- apa_print(model_2)
+
+```
+
+
+```{r regressionD, echo = FALSE}
+
+model_1_results$table %>% 
+  knitr::kable(caption = "Model regressing gender, AQ-10 score, and age on dominant hand tapping scores",
+            escape = TRUE)
+```
+
+*Note*: `r model_1_results$estimate$modelfit$r2`, `r model_1_results$estimate$modelfit$r2_adj`. $B$ = unstandardised regression coefficient, $SE$ = standard error, $\beta$ = standardised regression coefficient $CI$ = confidence interval, $t$ = t-test value, $p$ = probability.
+
+
+```{r regressionND, echo = FALSE}
+
+
+model_2_results$table %>% 
+  knitr::kable(caption = "Model regressing gender, AQ-10 score, and age on non-dominant hand tapping scores",
+               escape = TRUE)
+
+```
+
+*Note*: `r model_2_results$estimate$modelfit$r2`, `r model_2_results$estimate$modelfit$r2_adj`. $B$ = unstandardised regression coefficient, $SE$ = standard error, $\beta$ = standardised regression coefficient $CI$ = confidence interval, $t$ = t-test value, $p$ = probability.
+
+The overall models were both statistically significant, explaining $22\%$ of the variance for dominant, `r model_1_results$full_result$modelfit$r2`, and $12\%$ of the variance for non-dominant hands, `r model_2_results$full_result$modelfit$r2`. Gender, AQ-10 score, age, and the interaction between AQ-10 and age explained significant amounts of unique variance in finger tapping scores in the dominant hand (see Table 3. Only gender, AQ-10 score, and age explained significant amounts of unique variance in finger tapping scores in the non-dominant hand (see Table 4). When age or AQ-10 scores increased, tapping decreased for both hands.
+
+```{r simple-slopes-results, echo = FALSE, include = FALSE}
+
+s <- sim_slopes(model_1, pred = AQ.10.score, modx = Age, johnson_neyman = TRUE)
+
+simple_slopes_results <- print(s$slopes)
+
+```
+
+
+```{r simple-slopes-table, echo = FALSE}
+simple_slopes_results %>% 
+  knitr::kable(caption = "A simple slopes analysis of the moderating effect of age on the relationship between AQ-10 scores and tapping scores, using Johnson-Neyman intervals.",
+            escape = TRUE)
+```
+
+To interpret the interaction in the dominant hand, a simple effects plot with standardised slopes was generated as seen in Figure 2. Statistical test values are shown in Table 5. Examination of the simple slope coefficients revealed that for the younger participants ($-1 SD$), there was a significant negative linear relationship between AQ-10 scores and tapping scores. When participants were closer to the mean age there was also a significant negative linear relationship between AQ-10 scores and tapping scores, but with a shallower slope. For older participants ($+1 SD$), there was no significant relationship between AQ-10 scores and tapping scores.
+
+```{r simpleSlopes, echo = FALSE, fig.cap="A simple slopes plot illustrating the interaction between age and AQ-10 score for the dominant hand tapping data"}
+library(interactions)
+p <- interact_plot(model_1, pred = AQ.10.score, modx = Age, plot.points = TRUE)
+p +  theme(text = element_text(size=14)) + 
+  labs(x="AQ-10 score", y = "Dominant hand tapping rate")
+```
