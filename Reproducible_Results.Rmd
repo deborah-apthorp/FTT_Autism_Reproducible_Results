@@ -94,9 +94,13 @@ FTT_AQ_Data_Long <- melt(FTT_AQ_data,
 levels(FTT_AQ_Data_Long$Hand)[levels(FTT_AQ_Data_Long$Hand)=="values.score_dominant"] <- "Dominant"
 levels(FTT_AQ_Data_Long$Hand)[levels(FTT_AQ_Data_Long$Hand)=="values.score_nondominant"] <- "Nondominant"
 
+tapping_normality_test <- shapiro.test(FTT_AQ_data$values.score_dominant-FTT_AQ_data$values.score_nondominant)
+
 res <- wilcox.test(Tapping_score ~ Hand, data = FTT_AQ_Data_Long, paired = TRUE)
 
-## still need to be using these results in the text below. Don't think this should be a t-value! 
+
+
+
 
 ```
 
@@ -162,6 +166,12 @@ model_1_results <- apa_print(model_1)
 model_2 <- lm(values.score_nondominant ~ AQ.10.score*Age + Gender , data = FTT_AQ_data)
 model_2_results <- apa_print(model_2)
 
+model_3 <- lm(values.score_dominant ~ AQ.10.score *Age + Gender +Gender*AQ.10.score , data = FTT_AQ_data)
+model_3_results <- apa_print(model_3)
+
+model_4 <- lm(values.score_nondominant ~ AQ.10.score *Age + Gender +Gender*AQ.10.score , data = FTT_AQ_data)
+model_4_results <- apa_print(model_4)
+
 ```
 
 
@@ -210,4 +220,27 @@ library(interactions)
 p <- interact_plot(model_1, pred = AQ.10.score, modx = Age, plot.points = TRUE)
 p +  theme(text = element_text(size=14)) + 
   labs(x="AQ-10 score", y = "Dominant hand tapping rate")
+```
+
+## Exploratory results
+
+We were interested in exploring any interaction effects of gender with AQ scores; although there was no significant difference between male and female participants on mean AQ score (see Table 1), it is possible that there may have been a moderating effect of gender on the relationship between AQ score and tapping rate. Accordingly, we carried out an exploratory analysis including the interaction between gender and AQ-10 score in each regression model (for the dominant and non-dominant hand). The interaction was not significant in either model. 
+
+```{r regression_exploratory_dominant, echo = FALSE}
+
+
+model_3_results$table %>% 
+  knitr::kable(caption = "Model regressing gender, AQ-10 score, age, and the interactions between age and AQ-10 score and AQ-10 score and gender, on dominant hand tapping scores",
+               escape = TRUE)
+
+```
+
+
+```{r regression_exploratory_nondominant, echo = FALSE}
+
+
+model_4_results$table %>% 
+  knitr::kable(caption = "Model regressing gender, AQ-10 score, age, and the interactions between age and AQ-10 score and AQ-10 score and gender, on non-dominant hand tapping scores",
+               escape = TRUE)
+
 ```
